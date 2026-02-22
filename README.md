@@ -31,7 +31,7 @@ cargo test --workspace
 
 ## Codex Handoff
 ```bash
-cd /home/jee/repos/QuarXTor-DAG
+cd /home/jee/repos/QuarxTor-DAG
 codex
 ```
 
