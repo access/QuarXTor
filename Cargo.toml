@@ -1,0 +1,12 @@
+[workspace]
+members = [
+  "core-rs",
+  "quarxproto",
+  "quarxdrive",
+  "quarxnet",
+  "quarxcloud",
+  "quarxtor",
+  "tools/quarxctl",
+  "tools/quarx-inspect",
+]
+resolver = "2"

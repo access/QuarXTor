@@ -1,0 +1,10 @@
+[package]
+name = "quarxtor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quarxtor-core = { path = "../core-rs" }
+quarxdrive = { path = "../quarxdrive" }
+serde_json = "1.0"
+toml = "0.8"

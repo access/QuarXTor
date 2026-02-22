@@ -1,0 +1,226 @@
+{
+  "addr": {
+    "group": "net",
+    "type": "string",
+    "level": "required-default",
+    "label": "Listen address",
+    "description": "Listen address host:port for quarxnetd."
+  },
+  "analysis.enable_znode": {
+    "group": "core",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Enable Z-node analysis",
+    "description": "Enable structural Z-node analysis during import."
+  },
+  "analysis.fs_stats_fallback": {
+    "group": "core",
+    "type": "bool",
+    "level": "required-default",
+    "label": "FS stats fallback",
+    "description": "Fallback to filesystem stats when import metadata is missing."
+  },
+  "cache_dir": {
+    "group": "paths",
+    "type": "path",
+    "level": "required-default",
+    "label": "Cache directory",
+    "description": "Cache directory (safe to delete)."
+  },
+  "data_dir": {
+    "group": "paths",
+    "type": "path",
+    "level": "required-default",
+    "label": "Data directory",
+    "description": "Base directory for repository data."
+  },
+  "enable_netd": {
+    "group": "daemon",
+    "type": "bool",
+    "level": "reserved",
+    "label": "Enable netd",
+    "description": "Reserved flag for quarxnetd enablement."
+  },
+  "exclude_dir_glob": {
+    "group": "import",
+    "type": "string",
+    "level": "required-default",
+    "label": "Exclude dir glob",
+    "description": "CSV glob patterns for directories to exclude."
+  },
+  "exclude_glob": {
+    "group": "import",
+    "type": "string",
+    "level": "required-default",
+    "label": "Exclude glob",
+    "description": "CSV glob patterns to exclude."
+  },
+  "fs_cache_bytes": {
+    "group": "drive",
+    "type": "u64",
+    "level": "reserved",
+    "label": "Drive FS cache bytes",
+    "description": "Reserved cache size for drive filesystem layer."
+  },
+  "import_glob_mode": {
+    "group": "import",
+    "type": "enum",
+    "level": "required-default",
+    "label": "Glob mode",
+    "description": "Glob application mode: file-only, dir-only, both."
+  },
+  "include_dir_glob": {
+    "group": "import",
+    "type": "string",
+    "level": "required-default",
+    "label": "Include dir glob",
+    "description": "CSV glob patterns for directories to include."
+  },
+  "include_glob": {
+    "group": "import",
+    "type": "string",
+    "level": "required-default",
+    "label": "Include glob",
+    "description": "CSV glob patterns to include."
+  },
+  "l0_chunk": {
+    "group": "core",
+    "type": "u64",
+    "level": "required-default",
+    "label": "L0 chunk size",
+    "description": "Base chunk size in bytes for new L0 blocks."
+  },
+  "lang": {
+    "group": "ui",
+    "type": "string",
+    "level": "required-default",
+    "label": "Locale tag",
+    "description": "BCP-47 locale tag for CLI/UI output."
+  },
+  "log_dir": {
+    "group": "paths",
+    "type": "path",
+    "level": "required-default",
+    "label": "Log directory",
+    "description": "Log directory for daemons and tools."
+  },
+  "min_file_size": {
+    "group": "import",
+    "type": "u64",
+    "level": "required-default",
+    "label": "Minimum file size",
+    "description": "Minimum file size in bytes to import."
+  },
+  "mountpoint": {
+    "group": "drive",
+    "type": "path",
+    "level": "reserved",
+    "label": "Drive mountpoint",
+    "description": "Reserved mountpoint path for drive view."
+  },
+  "ram.limit": {
+    "group": "core",
+    "type": "string",
+    "level": "required-default",
+    "label": "RAM limit mode",
+    "description": "RAM tier policy: full, limit, auto."
+  },
+  "repo_root": {
+    "group": "core",
+    "type": "path",
+    "level": "required",
+    "label": "Repository root",
+    "description": "Canonical repository root path (absolute)."
+  },
+  "root": {
+    "group": "import",
+    "type": "path",
+    "level": "required",
+    "label": "Import root",
+    "description": "Source tree path to import (absolute)."
+  },
+  "runtime_dir": {
+    "group": "paths",
+    "type": "path",
+    "level": "required-default",
+    "label": "Runtime directory",
+    "description": "Runtime directory for sockets and pid files."
+  },
+  "seed_nodes": {
+    "group": "cloud",
+    "type": "string",
+    "level": "reserved",
+    "label": "Seed nodes",
+    "description": "Reserved list of cluster seed nodes."
+  },
+  "skip_devices": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Skip device files",
+    "description": "Skip block and char devices."
+  },
+  "skip_hidden": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Skip hidden files",
+    "description": "Skip hidden files and directories."
+  },
+  "skip_special": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Skip special files",
+    "description": "Skip sockets, pipes, and special types."
+  },
+  "skip_symlink": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Skip symlinks",
+    "description": "Do not follow symlinks during import."
+  },
+  "skip_zero": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Skip zero-size files",
+    "description": "Skip zero-size files."
+  },
+  "strategy": {
+    "group": "drive",
+    "type": "string",
+    "level": "reserved",
+    "label": "Drive strategy",
+    "description": "Reserved strategy for drive caching/overlay."
+  },
+  "transport": {
+    "group": "net",
+    "type": "enum",
+    "level": "required-default",
+    "label": "Network transport",
+    "description": "Transport type: tcp or unix."
+  },
+  "unix_path": {
+    "group": "net",
+    "type": "path",
+    "level": "required-default",
+    "label": "UNIX socket path",
+    "description": "UNIX socket path for local transport."
+  },
+  "use_z": {
+    "group": "import",
+    "type": "bool",
+    "level": "required-default",
+    "label": "Use Z compression",
+    "description": "Enable Z compression on import."
+  },
+  "z_threshold": {
+    "group": "import",
+    "type": "u64",
+    "level": "required-default",
+    "label": "Z threshold",
+    "description": "Heuristic threshold for Z compression usefulness."
+  }
+}

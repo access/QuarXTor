@@ -1,0 +1,7 @@
+"cli.usage.main" = "Usage:\n  {bin} --version\n  {bin} import <DIR|FILE> [--repo <path>]\n  {bin} status [--repo <path>] [--json]\n\nPlanned namespaces:\n  {bin} config|repo|service|mount|dashboard|cloud|compress|export|convert|version|diag\n\nFor planned namespace details:\n  {bin} <namespace> --help\n"
+"cli.error.unknown_command" = "Unknown command"
+"cli.error.missing_argument" = "Missing argument"
+"cli.error.invalid_path" = "Invalid path"
+"cli.error.open_repo" = "Failed to open repo"
+"cli.error.import_failed" = "Import failed"
+"cli.error.status_failed" = "Status failed"
