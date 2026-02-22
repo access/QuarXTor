@@ -22,6 +22,7 @@ Current baseline user entrypoint:
 - `quarxtor import`
 - `quarxtor status`
 - operational namespaces: `config`, `repo`, `service`, `mount`, `dashboard`, `cloud`, `compress`, `export`, `convert`, `version`, `diag`
+- defaults bootstrap: `quarxtor config init --force` or `quarxtor config defaults apply`
 
 ## Validation
 ```bash

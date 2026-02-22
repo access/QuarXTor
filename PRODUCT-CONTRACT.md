@@ -8,6 +8,11 @@
 - `quarxtor status`
 - `config`, `repo`, `service`, `mount`, `dashboard`, `cloud`, `compress`, `export`, `convert`, `version`, `diag`
 - See `docs/contracts/COMMAND-TAXONOMY.md` for namespace/subcommand taxonomy.
+- Config contract surface includes:
+  - `quarxtor config init --force` (materialize full default config)
+  - `quarxtor config defaults apply` (fill missing required/default keys)
+  - `quarxtor config print --effective`
+  - `quarxtor config explain <section.key>`
 
 ## Determinism
 - Machine output will use a universal JSON envelope.

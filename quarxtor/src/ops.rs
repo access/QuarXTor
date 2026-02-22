@@ -9,7 +9,7 @@ use quarxdrive::fs_tree::{build_root_tree, FsEntryKind};
 use quarxdrive::QuarxRepo;
 use quarxtor_core::config::{
     config_contract, config_ini_path, parse_ini_sections, write_full_config, ConfigValueType,
-    EffectiveConfig, QuarxConfig,
+    EffectiveConfig, KeyRole, QuarxConfig,
 };
 use quarxtor_core::store::file_store::FileBlockStore;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,19 @@ use serde_json::{json, Value};
 use crate::preflight::{run_preflight, PreflightOptions};
 
 pub const NAMESPACE_SUBCOMMANDS: &[(&str, &[&str])] = &[
-    ("config", &["show", "effective", "explain", "set", "lint"]),
+    (
+        "config",
+        &[
+            "print",
+            "effective",
+            "show",
+            "explain",
+            "set",
+            "lint",
+            "init",
+            "defaults",
+        ],
+    ),
     ("repo", &["init", "verify", "doctor", "recover", "stats"]),
     ("service", &["start", "stop", "restart", "status", "logs"]),
     (
@@ -720,44 +732,10 @@ fn envelope_json(ctx: &CommandContext, state: &str, result: Value, err: Option<V
 
 fn handle_config(ctx: &CommandContext, args: &[String]) -> Result<CommandResult, CmdError> {
     match ctx.subcommand.as_str() {
-        "show" => {
-            let path = ensure_config_file()?;
-            let content = fs::read_to_string(&path).map_err(|e| CmdError::io(e.to_string()))?;
-            Ok(CommandResult {
-                state: "ok",
-                text: format!("config_path={}\n{}", path.display(), content),
-                result: json!({
-                    "config_path": path.display().to_string(),
-                    "content": content
-                }),
-            })
-        }
-        "effective" => {
-            let cfg =
-                EffectiveConfig::load_default().map_err(|e| CmdError::config(e.to_string()))?;
-            let mut rows = Vec::new();
-            for key in config_contract() {
-                rows.push(json!({
-                    "key": format!("{}.{}", key.section, key.key),
-                    "value": effective_value_for_key(&cfg, key.section, key.key),
-                }));
-            }
-            let mut text = String::new();
-            for row in &rows {
-                text.push_str(&format!(
-                    "{}={}\n",
-                    row["key"].as_str().unwrap_or(""),
-                    row["value"].as_str().unwrap_or("")
-                ));
-            }
-            Ok(CommandResult {
-                state: "ok",
-                text,
-                result: json!({
-                    "keys": rows
-                }),
-            })
-        }
+        "show" | "print" => config_print_command(args),
+        "effective" => config_effective_command(),
+        "init" => config_init_command(args),
+        "defaults" => config_defaults_command(args),
         "explain" => {
             if args.is_empty() {
                 return Err(CmdError::usage(
@@ -778,6 +756,12 @@ fn handle_config(ctx: &CommandContext, args: &[String]) -> Result<CommandResult,
             let Some(entry) = found else {
                 return Err(CmdError::config(format!("unknown config key: {key}")));
             };
+            let path = ensure_config_file()?;
+            let rows = collect_config_rows(&path, true)?;
+            let row = rows
+                .iter()
+                .find(|row| row.key == *key)
+                .ok_or_else(|| CmdError::config(format!("unknown config key: {key}")))?;
             let value_type = match entry.value_type {
                 ConfigValueType::Bool => "bool".to_string(),
                 ConfigValueType::U64 => "u64".to_string(),
@@ -788,9 +772,11 @@ fn handle_config(ctx: &CommandContext, args: &[String]) -> Result<CommandResult,
             let desc = entry.description.join(" ");
             let env = entry.env_override.unwrap_or("");
             let text = format!(
-                "key={}.{}\ndefault={}\ntype={}\nstatus={}\nenv_override={}\ndescription={}",
+                "key={}.{}\nvalue={}\nsource={}\ndefault={}\ntype={}\nstatus={}\nenv_override={}\ndescription={}",
                 entry.section,
                 entry.key,
+                row.value,
+                row.source,
                 entry.default_value,
                 value_type,
                 entry.status.as_str(),
@@ -802,6 +788,8 @@ fn handle_config(ctx: &CommandContext, args: &[String]) -> Result<CommandResult,
                 text,
                 result: json!({
                     "key": format!("{}.{}", entry.section, entry.key),
+                    "value": row.value,
+                    "source": row.source,
                     "default": entry.default_value,
                     "type": value_type,
                     "status": entry.status.as_str(),
@@ -881,6 +869,284 @@ fn handle_config(ctx: &CommandContext, args: &[String]) -> Result<CommandResult,
         }
         _ => Err(CmdError::internal("unsupported config subcommand")),
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConfigResolvedRow {
+    key: String,
+    value: String,
+    source: String,
+    #[serde(skip_serializing)]
+    section: String,
+    #[serde(skip_serializing)]
+    name: String,
+}
+
+fn config_print_command(args: &[String]) -> Result<CommandResult, CmdError> {
+    let parsed = parse_options(args);
+    if parsed.options.contains_key("effective") {
+        return config_effective_command();
+    }
+    let path = ensure_config_file()?;
+    let rows = collect_config_rows(&path, false)?;
+    let content = render_contract_ini(&rows);
+    Ok(CommandResult {
+        state: "ok",
+        text: format!("config_path={}\n{}", path.display(), content),
+        result: json!({
+            "config_path": path.display().to_string(),
+            "content": content,
+            "keys": rows
+        }),
+    })
+}
+
+fn config_effective_command() -> Result<CommandResult, CmdError> {
+    let path = ensure_config_file()?;
+    EffectiveConfig::load_default().map_err(|e| CmdError::config(e.to_string()))?;
+    let rows = collect_config_rows(&path, true)?;
+    let content = render_contract_ini(&rows);
+    let mut text = format!("config_path={}\n", path.display());
+    for row in &rows {
+        text.push_str(&format!(
+            "{} = {}  # source={}\n",
+            row.key, row.value, row.source
+        ));
+    }
+    Ok(CommandResult {
+        state: "ok",
+        text,
+        result: json!({
+            "config_path": path.display().to_string(),
+            "content": content,
+            "keys": rows
+        }),
+    })
+}
+
+fn config_init_command(args: &[String]) -> Result<CommandResult, CmdError> {
+    let parsed = parse_options(args);
+    let force = parsed.options.contains_key("force");
+    let path = write_full_config(force).map_err(|e| CmdError::config(e.to_string()))?;
+    let rows = collect_config_rows(&path, false)?;
+    Ok(CommandResult {
+        state: "ok",
+        text: format!(
+            "config_init=ok\nconfig_path={}\nforce={}\nkeys={}",
+            path.display(),
+            force,
+            rows.len()
+        ),
+        result: json!({
+            "config_init": "ok",
+            "config_path": path.display().to_string(),
+            "force": force,
+            "keys": rows.len()
+        }),
+    })
+}
+
+fn config_defaults_command(args: &[String]) -> Result<CommandResult, CmdError> {
+    let parsed = parse_options(args);
+    let force = parsed.options.contains_key("force");
+    if parsed
+        .positionals
+        .first()
+        .map(|v| v.as_str())
+        .is_some_and(|v| v == "show")
+    {
+        let rows = collect_default_rows();
+        let content = render_contract_ini(&rows);
+        return Ok(CommandResult {
+            state: "ok",
+            text: content.clone(),
+            result: json!({
+                "content": content,
+                "keys": rows
+            }),
+        });
+    }
+
+    if let Some(mode) = parsed.positionals.first() {
+        if mode != "apply" {
+            return Err(CmdError::usage(
+                "config defaults supports [show|apply] [--force]",
+            ));
+        }
+    }
+
+    let (path, added, unknown_count) = apply_config_defaults(force)?;
+    let rows = collect_config_rows(&path, false)?;
+    Ok(CommandResult {
+        state: "ok",
+        text: format!(
+            "config_defaults=ok\nconfig_path={}\nkeys_added={}\nunknown_keys={}\nforce={}",
+            path.display(),
+            added,
+            unknown_count,
+            force
+        ),
+        result: json!({
+            "config_defaults": "ok",
+            "config_path": path.display().to_string(),
+            "keys_added": added,
+            "unknown_keys": unknown_count,
+            "force": force,
+            "keys": rows
+        }),
+    })
+}
+
+fn apply_config_defaults(force: bool) -> Result<(PathBuf, u64, u64), CmdError> {
+    let path = config_ini_path().unwrap_or_else(|| PathBuf::from("/tmp/quarxtor/quarxctl.ini"));
+    let defaults = default_sections_from_contract();
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| CmdError::io(e.to_string()))?;
+        }
+        let content = render_ini_sections(&defaults);
+        fs::write(&path, content).map_err(|e| CmdError::io(e.to_string()))?;
+        let total = count_sections_keys(&defaults);
+        return Ok((path, total, 0));
+    }
+
+    let current_text = fs::read_to_string(&path).map_err(|e| CmdError::io(e.to_string()))?;
+    let parsed = parse_ini_sections(&current_text);
+    if !parsed.unknown_keys.is_empty() && !force {
+        return Err(CmdError::conflict(format!(
+            "config has unknown keys ({}); use config defaults --force to rewrite",
+            parsed.unknown_keys.join(", ")
+        )));
+    }
+
+    let mut sections = if force {
+        defaults.clone()
+    } else {
+        parsed.sections
+    };
+    let mut added = 0u64;
+    if !force {
+        for (section, kv) in &defaults {
+            let entry = sections.entry(section.clone()).or_default();
+            for (key, value) in kv {
+                if !entry.contains_key(key) {
+                    entry.insert(key.clone(), value.clone());
+                    added = added.saturating_add(1);
+                }
+            }
+        }
+    } else {
+        added = count_sections_keys(&defaults);
+    }
+
+    let rendered = render_ini_sections(&sections);
+    EffectiveConfig::from_ini_str(&rendered).map_err(|e| CmdError::config(e.to_string()))?;
+    fs::write(&path, rendered).map_err(|e| CmdError::io(e.to_string()))?;
+    Ok((path, added, parsed.unknown_keys.len() as u64))
+}
+
+fn collect_config_rows(path: &Path, include_env: bool) -> Result<Vec<ConfigResolvedRow>, CmdError> {
+    let text = fs::read_to_string(path).unwrap_or_default();
+    let parsed = parse_ini_sections(&text).sections;
+    let defaults = default_sections_from_contract();
+    let mut rows = Vec::new();
+    for key in config_contract() {
+        let full = format!("{}.{}", key.section, key.key);
+        let from_env = if include_env {
+            key.env_override
+                .and_then(env_non_empty)
+                .map(|value| (value, format!("env:{}", key.env_override.unwrap_or(""))))
+        } else {
+            None
+        };
+        let (value, source) = if let Some((value, source)) = from_env {
+            (value, source)
+        } else if let Some(value) = parsed
+            .get(key.section)
+            .and_then(|kv| kv.get(key.key))
+            .cloned()
+        {
+            (value, "config".to_string())
+        } else if let Some(value) = defaults
+            .get(key.section)
+            .and_then(|kv| kv.get(key.key))
+            .cloned()
+        {
+            (value, "default".to_string())
+        } else if !key.default_value.is_empty() {
+            (key.default_value.to_string(), "default".to_string())
+        } else {
+            (String::new(), "unset".to_string())
+        };
+        rows.push(ConfigResolvedRow {
+            key: full,
+            value,
+            source,
+            section: key.section.to_string(),
+            name: key.key.to_string(),
+        });
+    }
+    Ok(rows)
+}
+
+fn collect_default_rows() -> Vec<ConfigResolvedRow> {
+    let defaults = default_sections_from_contract();
+    let mut rows = Vec::new();
+    for key in config_contract() {
+        let value = defaults
+            .get(key.section)
+            .and_then(|kv| kv.get(key.key))
+            .cloned()
+            .unwrap_or_default();
+        rows.push(ConfigResolvedRow {
+            key: format!("{}.{}", key.section, key.key),
+            value,
+            source: "default".to_string(),
+            section: key.section.to_string(),
+            name: key.key.to_string(),
+        });
+    }
+    rows
+}
+
+fn render_contract_ini(rows: &[ConfigResolvedRow]) -> String {
+    let mut sections: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for row in rows {
+        sections
+            .entry(row.section.clone())
+            .or_default()
+            .insert(row.name.clone(), row.value.clone());
+    }
+    render_ini_sections(&sections)
+}
+
+fn default_sections_from_contract() -> BTreeMap<String, BTreeMap<String, String>> {
+    let template = parse_ini_sections(DEFAULT_CONFIG_TEXT).sections;
+    let mut out: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for key in config_contract() {
+        let value = template
+            .get(key.section)
+            .and_then(|kv| kv.get(key.key))
+            .cloned()
+            .unwrap_or_else(|| key.default_value.to_string());
+        let is_reserved_empty = matches!(key.role, KeyRole::Reserved) && value.trim().is_empty();
+        let is_optional_empty = matches!(key.role, KeyRole::Explicit) && value.trim().is_empty();
+        if is_reserved_empty || is_optional_empty {
+            continue;
+        }
+        out.entry(key.section.to_string())
+            .or_default()
+            .insert(key.key.to_string(), value);
+    }
+    out
+}
+
+fn count_sections_keys(sections: &BTreeMap<String, BTreeMap<String, String>>) -> u64 {
+    sections.values().map(|kv| kv.len() as u64).sum()
+}
+
+fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
 
 fn handle_repo(ctx: &CommandContext, _args: &[String]) -> Result<CommandResult, CmdError> {
@@ -2359,44 +2625,6 @@ fn ensure_config_file() -> Result<PathBuf, CmdError> {
     Ok(path)
 }
 
-fn effective_value_for_key(cfg: &EffectiveConfig, section: &str, key: &str) -> String {
-    match (section, key) {
-        ("core", "l0_chunk") => cfg.l0_chunk.to_string(),
-        ("core", "ram.limit") => cfg.ram_limit.clone(),
-        ("core", "analysis.enable_znode") => cfg.analysis_enable_znode.to_string(),
-        ("core", "analysis.fs_stats_fallback") => cfg.analysis_fs_stats_fallback.to_string(),
-        ("core", "repo_root") => cfg.repo_root.clone().unwrap_or_default(),
-        ("import", "root") => cfg.dataset_root.clone(),
-        ("import", "min_file_size") => cfg.import_min_file_size.to_string(),
-        ("import", "skip_hidden") => cfg.import_skip_hidden.to_string(),
-        ("import", "skip_symlink") => cfg.import_skip_symlink.to_string(),
-        ("import", "skip_zero") => cfg.import_skip_zero.to_string(),
-        ("import", "skip_devices") => cfg.import_skip_devices.to_string(),
-        ("import", "skip_special") => cfg.import_skip_special.to_string(),
-        ("import", "include_glob") => cfg.include_glob.clone().unwrap_or_default(),
-        ("import", "exclude_glob") => cfg.exclude_glob.clone().unwrap_or_default(),
-        ("import", "include_dir_glob") => cfg.include_dir_glob.clone().unwrap_or_default(),
-        ("import", "exclude_dir_glob") => cfg.exclude_dir_glob.clone().unwrap_or_default(),
-        ("import", "import_glob_mode") => cfg.import_glob_mode.clone(),
-        ("import", "use_z") => cfg.fs_import_use_z.to_string(),
-        ("import", "z_threshold") => cfg.fs_import_z_threshold.to_string(),
-        ("paths", "data_dir") => cfg.paths_data_dir.clone().unwrap_or_default(),
-        ("paths", "cache_dir") => cfg.paths_cache_dir.clone().unwrap_or_default(),
-        ("paths", "log_dir") => cfg.paths_log_dir.clone().unwrap_or_default(),
-        ("paths", "runtime_dir") => cfg.paths_runtime_dir.clone().unwrap_or_default(),
-        ("ui", "lang") => std::env::var("QUARX_LANG").unwrap_or_else(|_| "en-US".to_string()),
-        ("net", "addr") => cfg.net_addr.clone(),
-        ("net", "transport") => cfg.net_transport.clone(),
-        ("net", "unix_path") => cfg.net_unix_path.clone(),
-        ("drive", "mountpoint") => cfg.drive_mountpoint.clone().unwrap_or_default(),
-        ("drive", "strategy") => cfg.drive_strategy.clone().unwrap_or_default(),
-        ("drive", "fs_cache_bytes") => cfg.drive_fs_cache_bytes.to_string(),
-        ("daemon", "enable_netd") => cfg.daemon_enable_netd.to_string(),
-        ("cloud", "seed_nodes") => cfg.cloud_seed_nodes.clone().unwrap_or_default(),
-        _ => String::new(),
-    }
-}
-
 fn split_config_key(key: &str) -> Option<(&str, &str)> {
     let mut it = key.splitn(2, '.');
     let section = it.next()?;
@@ -2581,6 +2809,10 @@ fn parse_bool(raw: &str, default: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn namespace_help_is_available_for_all() {
@@ -2631,5 +2863,118 @@ mod tests {
             .stderr
             .unwrap_or_default()
             .contains("unknown subcommand"));
+    }
+
+    #[test]
+    fn config_init_writes_defaults() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let xdg_root = PathBuf::from(format!("/tmp/quarxtor-test-{}-xdg", now_ms()));
+        let cfg_path = xdg_root.join("quarxtor").join("quarxctl.ini");
+        fs::create_dir_all(cfg_path.parent().expect("parent")).expect("create config dir");
+        fs::write(&cfg_path, "").expect("seed config path");
+
+        let prev_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_root);
+
+        let out = run_namespace(
+            "config",
+            &[
+                "init".to_string(),
+                "--force".to_string(),
+                "--output".to_string(),
+                "json".to_string(),
+            ],
+        );
+
+        if let Some(value) = prev_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+
+        assert_eq!(out.exit_code, 0);
+        let text = fs::read_to_string(&cfg_path).expect("read config");
+        assert!(text.contains("root = /tmp/quarx-dataset"));
+        assert!(text.contains("transport = unix"));
+        assert!(text.contains("addr = 0.0.0.0:54721"));
+    }
+
+    #[test]
+    fn config_defaults_apply_fills_missing_keys() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let xdg_root = PathBuf::from(format!("/tmp/quarxtor-test-{}-xdg", now_ms()));
+        let cfg_path = xdg_root.join("quarxtor").join("quarxctl.ini");
+        fs::create_dir_all(cfg_path.parent().expect("parent")).expect("create config dir");
+        fs::write(&cfg_path, "[import]\nroot = /tmp/quarx-dataset\n")
+            .expect("write partial config");
+
+        let prev_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_root);
+
+        let out = run_namespace(
+            "config",
+            &[
+                "defaults".to_string(),
+                "apply".to_string(),
+                "--output".to_string(),
+                "json".to_string(),
+            ],
+        );
+
+        if let Some(value) = prev_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+
+        assert_eq!(out.exit_code, 0);
+        let text = fs::read_to_string(&cfg_path).expect("read config");
+        assert!(text.contains("[core]"));
+        assert!(text.contains("l0_chunk = 16384"));
+        assert!(text.contains("[net]"));
+    }
+
+    #[test]
+    fn config_print_effective_reports_env_source() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let xdg_root = PathBuf::from(format!("/tmp/quarxtor-test-{}-xdg", now_ms()));
+        let cfg_path = xdg_root.join("quarxtor").join("quarxctl.ini");
+        fs::create_dir_all(cfg_path.parent().expect("parent")).expect("create config dir");
+        fs::write(
+            &cfg_path,
+            "[import]\nroot = /tmp/quarx-dataset\n[net]\ntransport = tcp\naddr = 0.0.0.0:54721\n",
+        )
+        .expect("write config");
+
+        let prev_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let prev_net_addr = std::env::var("QUARX_NET_ADDR").ok();
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_root);
+        std::env::set_var("QUARX_NET_ADDR", "127.0.0.1:5555");
+
+        let out = run_namespace(
+            "config",
+            &[
+                "print".to_string(),
+                "--effective".to_string(),
+                "--output".to_string(),
+                "json".to_string(),
+            ],
+        );
+
+        if let Some(value) = prev_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        if let Some(value) = prev_net_addr {
+            std::env::set_var("QUARX_NET_ADDR", value);
+        } else {
+            std::env::remove_var("QUARX_NET_ADDR");
+        }
+
+        assert_eq!(out.exit_code, 0);
+        let payload = out.stdout.expect("json payload");
+        assert!(payload.contains("\"key\":\"net.addr\""));
+        assert!(payload.contains("env:QUARX_NET_ADDR"));
     }
 }

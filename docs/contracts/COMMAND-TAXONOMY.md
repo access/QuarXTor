@@ -9,7 +9,7 @@ Status model:
 ## Implemented
 - `import <DIR|FILE>`
 - `status [--json]`
-- `config show|effective|explain|set|lint`
+- `config print|effective|show|explain|set|lint|init|defaults`
 - `repo init|verify|doctor|recover|stats`
 - `service start|stop|restart|status|logs`
 - `mount create|attach|mount|unmount|list|info`
