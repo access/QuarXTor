@@ -11,10 +11,10 @@ All `--output json` responses use:
 - `timing`
 - `operation_id`
 
-For planned namespaces, `meta` includes:
+`meta` includes:
 - `namespace`
-- `subcommand` (`null` when omitted)
-- `state` (`planned`)
+- `subcommand`
+- `state` (`ok` or `error`)
 
 ## Error Objects
 `errors[]` entries include:
@@ -40,5 +40,4 @@ Tiered stable groups:
 - JSON mode is normative for automation.
 
 ## Namespace Status Baseline
-Current runtime supports `import` and `status`.
-Planned namespaces return deterministic `not_implemented` state.
+Current runtime supports all declared namespaces in `docs/contracts/COMMAND-TAXONOMY.md`.

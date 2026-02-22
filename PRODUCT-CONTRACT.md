@@ -6,8 +6,6 @@
 ## Baseline Implemented Surface
 - `quarxtor import`
 - `quarxtor status`
-
-## Planned Surface (Gate Controlled)
 - `config`, `repo`, `service`, `mount`, `dashboard`, `cloud`, `compress`, `export`, `convert`, `version`, `diag`
 - See `docs/contracts/COMMAND-TAXONOMY.md` for namespace/subcommand taxonomy.
 

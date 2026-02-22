@@ -21,7 +21,7 @@ Active workspace crates:
 Current baseline user entrypoint:
 - `quarxtor import`
 - `quarxtor status`
-- planned namespaces are exposed as deterministic stubs
+- operational namespaces: `config`, `repo`, `service`, `mount`, `dashboard`, `cloud`, `compress`, `export`, `convert`, `version`, `diag`
 
 ## Validation
 ```bash

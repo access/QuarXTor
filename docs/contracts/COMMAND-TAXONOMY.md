@@ -4,37 +4,24 @@ Canonical namespace and subcommand taxonomy for `quarxtor`.
 
 Status model:
 - `implemented`: runnable now.
-- `planned`: deterministic stub, returns `not_implemented`.
+- `reserved`: declared but not active in current binary.
 
 ## Implemented
 - `import <DIR|FILE>`
 - `status [--json]`
-
-## Planned Namespaces and Subcommands
-- `config`
-- subcommands: `show`, `effective`, `explain`, `set`, `lint`
-- `repo`
-- subcommands: `init`, `verify`, `doctor`, `recover`, `stats`
-- `service`
-- subcommands: `start`, `stop`, `restart`, `status`, `logs`
-- `mount`
-- subcommands: `create`, `attach`, `mount`, `unmount`, `list`, `info`
-- `dashboard`
-- subcommands: `serve`, `status`, `snapshot`
-- `cloud`
-- subcommands: `cluster`, `peer`, `discover`, `sync`, `policy`, `stats`
-- `compress`
-- subcommands: `analyze`, `plan`, `apply`, `rollback`, `history`, `tune`
-- `export`
-- subcommands: `snapshot`, `bundle`, `manifest`
-- `convert`
-- subcommands: `to-disk`, `to-nondisk`, `verify`
-- `version`
-- subcommands: `show`, `check-compat`
-- `diag`
-- subcommands: `preflight`, `trace`, `report`
+- `config show|effective|explain|set|lint`
+- `repo init|verify|doctor|recover|stats`
+- `service start|stop|restart|status|logs`
+- `mount create|attach|mount|unmount|list|info`
+- `dashboard serve|status|snapshot`
+- `cloud cluster|peer|discover|sync|policy|stats`
+- `compress analyze|plan|apply|rollback|history|tune`
+- `export snapshot|bundle|manifest`
+- `convert to-disk|to-nondisk|verify`
+- `version show|check-compat`
+- `diag preflight|trace|report`
 
 ## I/O Contract Hooks
 - `--output json` uses universal envelope from `docs/contracts/CLI-IO-CONTRACT.md`.
-- Planned commands return deterministic state with exit code `2`.
+- Command errors use stable categories and deterministic exit-code groups.
 - Unknown namespace or subcommand returns usage error with exit code `1`.

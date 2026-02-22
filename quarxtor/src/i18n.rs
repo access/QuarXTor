@@ -149,7 +149,7 @@ fn default_fallback_map() -> HashMap<String, String> {
     let mut map = HashMap::new();
     map.insert(
         "cli.usage.main".to_string(),
-        "Usage:\n  {bin} --version\n  {bin} import <DIR|FILE> [--repo <path>]\n  {bin} status [--repo <path>] [--json]\n\nPlanned namespaces:\n  {bin} config|repo|service|mount|dashboard|cloud|compress|export|convert|version|diag\n\nFor planned namespace details:\n  {bin} <namespace> --help\n"
+        "Usage:\n  {bin} --version\n  {bin} import <DIR|FILE> [--repo <path>]\n  {bin} status [--repo <path>] [--json]\n\nNamespaces:\n  {bin} config|repo|service|mount|dashboard|cloud|compress|export|convert|version|diag\n\nFor namespace details:\n  {bin} <namespace> --help\n"
             .to_string(),
     );
     map.insert(

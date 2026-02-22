@@ -10,32 +10,11 @@ use quarxtor_core::config::QuarxConfig;
 use quarxtor_core::store::file_store::FileBlockStore;
 
 mod i18n;
+mod ops;
 mod preflight;
 use i18n::I18n;
+use ops::run_namespace;
 use preflight::{run_preflight, PreflightOptions};
-
-const PLANNED_NAMESPACES: &[(&str, &[&str])] = &[
-    ("config", &["show", "effective", "explain", "set", "lint"]),
-    ("repo", &["init", "verify", "doctor", "recover", "stats"]),
-    ("service", &["start", "stop", "restart", "status", "logs"]),
-    (
-        "mount",
-        &["create", "attach", "mount", "unmount", "list", "info"],
-    ),
-    ("dashboard", &["serve", "status", "snapshot"]),
-    (
-        "cloud",
-        &["cluster", "peer", "discover", "sync", "policy", "stats"],
-    ),
-    (
-        "compress",
-        &["analyze", "plan", "apply", "rollback", "history", "tune"],
-    ),
-    ("export", &["snapshot", "bundle", "manifest"]),
-    ("convert", &["to-disk", "to-nondisk", "verify"]),
-    ("version", &["show", "check-compat"]),
-    ("diag", &["preflight", "trace", "report"]),
-];
 
 fn main() {
     let i18n = I18n::load();
@@ -62,8 +41,8 @@ fn main() {
     match cmd.as_str() {
         "import" => cmd_import(&i18n, &bin, rest),
         "status" => cmd_status(&i18n, &bin, rest),
-        "config" | "repo" | "service" | "mount" | "dashboard" | "cloud" | "compress"
-        | "export" | "convert" | "version" | "diag" => cmd_planned_namespace(&cmd, &rest),
+        "config" | "repo" | "service" | "mount" | "dashboard" | "cloud" | "compress" | "export"
+        | "convert" | "version" | "diag" => cmd_namespace(&cmd, &rest),
         _ => {
             eprintln!("{}: {}", i18n.t("cli.error.unknown_command", &[]), cmd);
             usage(&i18n, &bin, false);
@@ -347,152 +326,13 @@ fn print_import_stats(
     println!("skipped_other={}", stats.skipped_other);
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct PlannedDispatch {
-    exit_code: i32,
-    stdout: Option<String>,
-    stderr: Option<String>,
-}
-
-fn cmd_planned_namespace(cmd: &str, args: &[String]) -> ! {
-    let dispatch = dispatch_planned_namespace(cmd, args);
-    if let Some(out) = dispatch.stdout {
+fn cmd_namespace(namespace: &str, args: &[String]) -> ! {
+    let outcome = run_namespace(namespace, args);
+    if let Some(out) = outcome.stdout {
         println!("{out}");
     }
-    if let Some(err) = dispatch.stderr {
+    if let Some(err) = outcome.stderr {
         eprintln!("{err}");
     }
-    exit(dispatch.exit_code);
-}
-
-fn dispatch_planned_namespace(cmd: &str, args: &[String]) -> PlannedDispatch {
-    let mut json = false;
-    let mut help = false;
-    let mut subcommand: Option<String> = None;
-
-    let mut i = 0usize;
-    while i < args.len() {
-        let a = &args[i];
-        if a == "--help" || a == "-h" {
-            help = true;
-            i += 1;
-            continue;
-        }
-        if a == "--json" || a == "--output=json" {
-            json = true;
-            i += 1;
-            continue;
-        }
-        if a == "--output" {
-            if i + 1 < args.len() && args[i + 1] == "json" {
-                json = true;
-                i += 2;
-                continue;
-            }
-            i += 1;
-            continue;
-        }
-        if !a.starts_with('-') && subcommand.is_none() {
-            subcommand = Some(a.clone());
-        }
-        i += 1;
-    }
-
-    let allowed = planned_namespace_subcommands(cmd).unwrap_or(&[]);
-    if help {
-        return PlannedDispatch {
-            exit_code: 0,
-            stdout: Some(format!(
-                "Usage:\n  quarxtor {cmd} <subcommand> [--output json]\n\nAvailable subcommands:\n  {}",
-                allowed.join(", ")
-            )),
-            stderr: None,
-        };
-    }
-
-    if let Some(ref sub) = subcommand {
-        if !allowed.iter().any(|candidate| candidate == sub) {
-            return PlannedDispatch {
-                exit_code: 1,
-                stdout: None,
-                stderr: Some(format!(
-                    "{cmd}: unknown subcommand '{sub}' (allowed: {})",
-                    allowed.join(", ")
-                )),
-            };
-        }
-    }
-
-    if json {
-        let sub_json = match subcommand.as_deref() {
-            Some(sub) => format!("\"{sub}\""),
-            None => "null".to_string(),
-        };
-        let payload = format!(
-            "{{\"meta\":{{\"namespace\":\"{}\",\"subcommand\":{},\"state\":\"planned\"}},\"result\":null,\"errors\":[{{\"code\":\"not_implemented\",\"category\":\"state\",\"message\":\"namespace is planned and not implemented yet\"}}],\"timing\":{{\"started_at\":\"n/a\",\"ended_at\":\"n/a\",\"duration_ms\":0}},\"operation_id\":\"planned-{}\"}}",
-            cmd, sub_json, cmd
-        );
-        return PlannedDispatch {
-            exit_code: 2,
-            stdout: Some(payload),
-            stderr: None,
-        };
-    }
-
-    let suffix = subcommand
-        .as_deref()
-        .map(|sub| format!(":{sub}"))
-        .unwrap_or_default();
-    PlannedDispatch {
-        exit_code: 2,
-        stdout: None,
-        stderr: Some(format!(
-            "{cmd}{suffix}: namespace is planned and not implemented yet"
-        )),
-    }
-}
-
-fn planned_namespace_subcommands(namespace: &str) -> Option<&'static [&'static str]> {
-    for (name, subcommands) in PLANNED_NAMESPACES {
-        if *name == namespace {
-            return Some(subcommands);
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-mod planned_dispatch_tests {
-    use super::*;
-
-    #[test]
-    fn planned_json_response_is_stable() {
-        let args = vec!["mount".to_string(), "--output".to_string(), "json".to_string()];
-        let dispatch = dispatch_planned_namespace("mount", &args);
-        assert_eq!(dispatch.exit_code, 2);
-        let out = dispatch.stdout.expect("json payload");
-        assert!(out.contains("\"namespace\":\"mount\""));
-        assert!(out.contains("\"subcommand\":\"mount\""));
-        assert!(out.contains("\"code\":\"not_implemented\""));
-    }
-
-    #[test]
-    fn unknown_subcommand_is_usage_error() {
-        let args = vec!["oops".to_string()];
-        let dispatch = dispatch_planned_namespace("cloud", &args);
-        assert_eq!(dispatch.exit_code, 1);
-        assert!(dispatch.stdout.is_none());
-        let err = dispatch.stderr.expect("stderr");
-        assert!(err.contains("unknown subcommand"));
-    }
-
-    #[test]
-    fn help_lists_subcommands() {
-        let args = vec!["--help".to_string()];
-        let dispatch = dispatch_planned_namespace("compress", &args);
-        assert_eq!(dispatch.exit_code, 0);
-        let out = dispatch.stdout.expect("help");
-        assert!(out.contains("analyze"));
-        assert!(out.contains("rollback"));
-    }
+    exit(outcome.exit_code);
 }

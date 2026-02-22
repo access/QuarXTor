@@ -8,7 +8,7 @@ Rules:
 - Update this file whenever cursor changes.
 
 ## Cursor
-- Focus: close `G-04` and start `G-05`/`G-06` contract implementation passes.
+- Focus: post-`G-07` hardening (compat tests, UX refinement, production cloud transport).
 - Last known good: commit where `tools/control_check.py` passes.
 - Blockers: none recorded.
 
